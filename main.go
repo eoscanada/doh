@@ -24,7 +24,8 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-var rootCmd = &cobra.Command{Use: "pbop", Short: "Inspects any file with most auto-detection and auto-discovery", RunE: root}
+var rootCmd = &cobra.Command{Use: "pbop", Short: "Inspects any file with most auto-detection and auto-discovery"}
+var pbCmd = &cobra.Command{Use: "pb", Short: "Decode protobufs", RunE: pb}
 var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
@@ -43,16 +44,21 @@ func main() {
 	})
 
 	rootCmd.AddCommand(dbinCmd)
+	rootCmd.AddCommand(pbCmd)
 	rootCmd.AddCommand(btCmd)
 	btCmd.AddCommand(btLsCmd)
 	btCmd.AddCommand(btReadCmd)
 
-	rootCmd.PersistentFlags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
-	rootCmd.PersistentFlags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
-	rootCmd.PersistentFlags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+	pbCmd.Flags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
+	pbCmd.Flags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
+	pbCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+
+	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+
 	btCmd.PersistentFlags().String("db", "test:dev", "bigtable project and instance")
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
 	btReadCmd.Flags().String("type", "", "chain type")
+	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
 	//
 
@@ -63,7 +69,7 @@ func main() {
 	}
 }
 
-func root(cmd *cobra.Command, args []string) (err error) {
+func pb(cmd *cobra.Command, args []string) (err error) {
 	searchType := viper.GetString("global-type")
 
 	knownTypes := []string{
@@ -106,7 +112,7 @@ func root(cmd *cobra.Command, args []string) (err error) {
 	typ := proto.MessageType(matchingType)
 	el = reflect.New(typ.Elem()).Interface().(proto.Message)
 
-	depth := viper.GetInt("global-depth")
+	depth := viper.GetInt("pb-cmd-depth")
 	pbmarsh := jsonpb.Marshaler{
 		EnumsAsInts:  false,
 		EmitDefaults: true,
@@ -146,7 +152,7 @@ func viewDbin(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("unsupported dbin content type: %s", contentType)
 	}
 
-	depth := viper.GetInt("global-depth")
+	depth := viper.GetInt("dbin-cmd-depth")
 	pbmarsh := jsonpb.Marshaler{
 		EnumsAsInts:  false,
 		EmitDefaults: true,
@@ -183,9 +189,9 @@ func btLs(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Listing tables")
+	fmt.Println("Listing tables:")
 	for _, tbl := range tables {
-		fmt.Println(tbl)
+		fmt.Println("-", tbl)
 	}
 	return nil
 }
@@ -197,7 +203,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	flagBlockKind := viper.GetString("bt-read-cmd-type")
-
+	depth := viper.GetInt("bt-read-cmd-depth")
 	blockKind := pbbstream.BlockKind(pbbstream.BlockKind_value[flagBlockKind])
 	if blockKind == pbbstream.BlockKind_UNKNOWN {
 		return fmt.Errorf("invalid block kind value: %q", flagBlockKind)
@@ -218,19 +224,26 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 	var innerError error
 
 	err = client.Open(args[0]).ReadRows(context.Background(), bigtable.PrefixRange(prefix), func(row bigtable.Row) bool {
-		formatedRow := map[string]interface{}{}
+		formatedRow := map[string]interface{}{
+			"key": row.Key(),
+		}
 		for _, v := range row {
 			for _, item := range v {
 				key := strings.Replace(item.Column, "-", "_", -1)
 				key = strings.Replace(key, ":", "_", -1)
 				protoMessage := getProtoMap(blockKind, key)
-				if protoMessage != nil {
-					formatedRow[key], _ = decodePayload(pbmarsh, protoMessage, item.Value)
+				if (protoMessage != nil) && (depth != 0) {
+					formatedRow[key], err = decodePayload(pbmarsh, protoMessage, item.Value)
+					if err != nil {
+						innerError = err
+						return false
+					}
 				} else {
 					formatedRow[key] = item.Value
 				}
 			}
 		}
+
 		cnt, err := json.Marshal(formatedRow)
 		if err != nil {
 			innerError = err
@@ -238,7 +251,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		}
 		fmt.Println(string(cnt))
 		return true
-	}, bigtable.LimitRows(5))
+	}, nil)
 	if err != nil {
 		return err
 	}
@@ -321,19 +334,25 @@ func splitDb() (project, instance string, err error) {
 func getProtoMap(blockKindValue pbbstream.BlockKind, key string) proto.Message {
 	maps := protoMappings[blockKindValue]
 	if val, ok := maps[key]; ok {
-		return val
+		typ := reflect.TypeOf(val)
+		return reflect.New(typ.Elem()).Interface().(proto.Message)
 	} else {
 		return nil
 	}
 
 }
 
-func decodePayload(marshaler jsonpb.Marshaler, obj proto.Message, bytes []byte) (out proto.Message, err error) {
+func decodePayload(marshaler jsonpb.Marshaler, obj proto.Message, bytes []byte) (out json.RawMessage, err error) {
 
 	err = proto.Unmarshal(bytes, obj)
 	if err != nil {
 		return nil, fmt.Errorf("proto unmarshal: %s", err)
 	}
 
-	return obj, nil
+	cnt, err := marshaler.MarshalToString(obj)
+	if err != nil {
+		return nil, fmt.Errorf("json marshal: %s", err)
+	}
+
+	return json.RawMessage(cnt), nil
 }
