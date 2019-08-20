@@ -33,7 +33,7 @@ var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big t
 
 var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 	pbbstream.BlockKind_ETH: map[string]proto.Message{
-		"block_headerProto": &pbdeth.Block{},
+		"block_headerProto": &pbdeth.BlockHeader{},
 		"trx_proto":         &pbdeth.TransactionTrace{},
 	},
 }
@@ -57,7 +57,8 @@ func main() {
 
 	btCmd.PersistentFlags().String("db", "test:dev", "bigtable project and instance")
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
-	btReadCmd.Flags().String("type", "", "chain type")
+	btReadCmd.Flags().String("kind", "", "block kind value to assume of the data")
+	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
 	//
@@ -70,7 +71,7 @@ func main() {
 }
 
 func pb(cmd *cobra.Command, args []string) (err error) {
-	searchType := viper.GetString("global-type")
+	searchType := viper.GetString("pb-cmd-type")
 
 	knownTypes := []string{
 		"dfuse.bstream.v1.Block",
@@ -202,11 +203,11 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	flagBlockKind := viper.GetString("bt-read-cmd-type")
+	flagBlockKind := viper.GetString("bt-read-cmd-kind")
 	depth := viper.GetInt("bt-read-cmd-depth")
 	blockKind := pbbstream.BlockKind(pbbstream.BlockKind_value[flagBlockKind])
 	if blockKind == pbbstream.BlockKind_UNKNOWN {
-		return fmt.Errorf("invalid block kind value: %q", flagBlockKind)
+		return fmt.Errorf("invalid block --kind value: %q", flagBlockKind)
 	}
 
 	prefix := viper.GetString("bt-read-cmd-prefix")
@@ -222,6 +223,11 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	var innerError error
+
+	var opts []bigtable.ReadOption
+	if limit := viper.GetInt("bt-read-cmd-limit"); limit != 0 {
+		opts = append(opts, bigtable.LimitRows(int64(limit)))
+	}
 
 	err = client.Open(args[0]).ReadRows(context.Background(), bigtable.PrefixRange(prefix), func(row bigtable.Row) bool {
 		formatedRow := map[string]interface{}{
@@ -251,7 +257,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		}
 		fmt.Println(string(cnt))
 		return true
-	}, nil)
+	}, opts...)
 	if err != nil {
 		return err
 	}
@@ -324,7 +330,12 @@ func inputFile(args []string) (io.ReadCloser, error) {
 }
 
 func splitDb() (project, instance string, err error) {
-	parts := strings.Split(viper.GetString("bt-global-db"), ":")
+	db := viper.GetString("bt-global-db")
+	if db == "prod" {
+		return "dfuseio-global", "dfuse-saas", nil
+	}
+
+	parts := strings.Split(db, ":")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid --db field")
 	}
