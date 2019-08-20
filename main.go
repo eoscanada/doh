@@ -2,25 +2,28 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/abourget/viperbind"
-	pd "github.com/emicklei/protobuf2map"
-	_ "github.com/eoscanada/pbop/pb/dfuse/codecs/deos"
-	_ "github.com/eoscanada/pbop/pb/dfuse/codecs/deth"
+	pbbstream "github.com/eoscanada/bstream/pb/dfuse/bstream/v1"
+	"github.com/eoscanada/dbin"
+	"github.com/eoscanada/pbop/jsonpb"
+	pbdeos "github.com/eoscanada/pbop/pb/dfuse/codecs/deos"
+	pbdeth "github.com/eoscanada/pbop/pb/dfuse/codecs/deth"
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tidwall/sjson"
 )
 
 var rootCmd = &cobra.Command{Use: "pbop", Short: "Inspects any file with most auto-detection and auto-discovery", RunE: root}
-var peekCmd = &cobra.Command{Use: "peek", Short: "Do all sorts of type checks to determine what the file is", RunE: peek}
+var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
 var decodeCmd = &cobra.Command{Use: "decode", Short: "Decode a file in a certain way", RunE: decode}
 
 func main() {
@@ -28,17 +31,16 @@ func main() {
 		viperbind.AutoBind(rootCmd, "PBOP")
 	})
 
-	rootCmd.AddCommand(peekCmd)
+	rootCmd.AddCommand(dbinCmd)
 	rootCmd.AddCommand(decodeCmd)
 
-	rootCmd.PersistentFlags().StringSliceP("include", "I", []string{}, "Path to protofiles")
-	rootCmd.PersistentFlags().StringP("proto", "p", "", "Proto file")
 	rootCmd.PersistentFlags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
 	rootCmd.PersistentFlags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
 
-	peekCmd.Flags().String("blockmeta-addr", "blockmeta:50001", "Blockmeta endpoint is queried to find the last irreversible block on the network being indexed")
+	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
+	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 
-	decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
+	//decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println("ERROR:", err)
@@ -47,94 +49,37 @@ func main() {
 }
 
 func root(cmd *cobra.Command, args []string) (err error) {
-	// TODO: find the .proto file corresponding to an fnmatch of `-I`
-	defs := pd.NewDefinitions()
-
-	includes := viper.GetStringSlice("global-include")
-	if len(includes) == 0 {
-		return fmt.Errorf("add at least one --include (-I)")
-	}
-
-	var importedFiles []string
-	err = filepath.Walk(includes[0], func(path string, info os.FileInfo, err error) error {
-		shortPath := strings.TrimPrefix(strings.TrimPrefix(path, includes[0]), "/")
-
-		//fmt.Println("PATH", info.IsDir(), path)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if strings.HasPrefix(shortPath, ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(info.Name(), ".proto") {
-			cnt, err := ioutil.ReadFile(path)
-			if err != nil {
-				return fmt.Errorf("reading file %q: %s", path, err)
-			}
-
-			if err := defs.ReadFrom(shortPath, bytes.NewReader(cnt)); err != nil {
-				return fmt.Errorf("parsing .proto file %q: %s", path, err)
-			}
-
-			fmt.Println("Imported", shortPath)
-
-			importedFiles = append(importedFiles, shortPath)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("walking: %s", err)
-	}
-
 	searchType := viper.GetString("global-type")
 
-	var typesFound []string
-	var packageFound, typeFound string
-first:
-	for _, importedFile := range importedFiles {
-		//fmt.Println("FILE", importedFile)
-		pkg, ok := defs.Package(importedFile)
-		if !ok {
-			continue
+	knownTypes := []string{
+		"dfuse.bstream.v1.Block",
+		"dfuse.codecs.deth.Block",
+		"dfuse.codecs.deth.BlockHeader",
+		"dfuse.codecs.deth.EVMCall",
+		"dfuse.codecs.deos.SignedBlock",
+	}
+	var matchingType string
+	for _, t := range knownTypes {
+		if searchType == t {
+			matchingType = t
+			break
 		}
-
-		//fmt.Println("PKG", pkg)
-		for _, msg := range defs.MessagesInPackage(pkg) {
-			def := fmt.Sprintf("%s.%s", pkg, msg.Name)
-			//fmt.Println("MESSAGE", def)
-			if def == searchType {
-				packageFound = pkg
-				typeFound = msg.Name
-				typesFound = []string{"ok"}
-				break first
+		if strings.Contains(t, searchType) {
+			if matchingType != "" {
+				return fmt.Errorf("ambiguous type (-t) provided (%q or %q ?), be more specific (known types: %q)", matchingType, t, knownTypes)
 			}
-			if strings.Contains(def, searchType) {
-				typesFound = append(typesFound, def)
-				packageFound = pkg
-				typeFound = msg.Name
-			}
+			matchingType = t
 		}
 	}
-	if len(typesFound) > 1 {
-		return fmt.Errorf("ambiguous type (-t) provided, be more specific: %s", typesFound)
+	if matchingType == "" {
+		return fmt.Errorf("type (-t) doesn't match known types (%q)", knownTypes)
 	}
 
-	input := viper.GetString("global-input")
-	var reader io.ReadCloser
-	if input == "-" {
-		reader = os.Stdin
-	} else {
-		file, err := os.Open(input)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-
-		reader = file
+	reader, err := inputFile(args)
+	if err != nil {
+		return err
 	}
+	defer reader.Close()
 
 	buf := &bytes.Buffer{}
 	_, err = io.Copy(buf, reader)
@@ -142,19 +87,115 @@ first:
 		return
 	}
 
-	dec := pd.NewDecoder(defs, proto.NewBuffer(buf.Bytes()))
-
-	result, err := dec.Decode(packageFound, typeFound)
+	typ := proto.MessageType(matchingType)
+	el := reflect.New(typ).Interface().(proto.Message)
+	err = proto.Unmarshal(buf.Bytes(), el)
 	if err != nil {
 		return fmt.Errorf("decoding: %s", err)
+	}
+
+	result, err := json.MarshalIndent(el, "", "  ")
+	if err != nil {
+		return fmt.Errorf("json encode: %s", err)
 	}
 
 	log.Printf("%#v", result)
 
 	return nil
 }
-func peek(cmd *cobra.Command, args []string) (err error) {
-	fmt.Println("PEEK")
+func viewDbin(cmd *cobra.Command, args []string) (err error) {
+	// Open the dbin file
+	// Check its type
+	// Load the contents with the right value
+
+	reader, err := inputFile(args)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	binReader := dbin.NewReader(reader)
+
+	contentType, version, err := binReader.ReadHeader()
+	if version != 1 {
+		return fmt.Errorf("unsupported dbin version %d", version)
+	}
+
+	switch contentType {
+	case "EOS", "ETH":
+	default:
+		return fmt.Errorf("unsupported dbin content type: %s", contentType)
+	}
+
+	depth := viper.GetInt("dbin-cmd-depth")
+	pbmarsh := jsonpb.Marshaler{
+		EnumsAsInts:  false,
+		EmitDefaults: true,
+		OrigName:     true,
+	}
+
+	for {
+		msg, err := binReader.ReadMessage()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error reading message: %s", err)
+		}
+
+		blk := &pbbstream.Block{}
+		err = proto.Unmarshal(msg, blk)
+		if err != nil {
+			return fmt.Errorf("proto unmarshal: %s", err)
+		}
+
+		out, err := pbmarsh.MarshalToString(blk)
+		if err != nil {
+			return fmt.Errorf("json marshal: %s", err)
+		}
+
+		// if required to, show the payload, and replace the `payload_buffer` with the decoded
+		// content
+		if depth > 0 {
+			var obj proto.Message
+			switch blk.PayloadKind {
+			case pbbstream.BlockKind_EOS:
+				obj = &pbdeos.SignedBlock{}
+				obj = &pbdeth.Block{}
+			case pbbstream.BlockKind_ETH:
+				obj = &pbdeth.Block{}
+			default:
+				return fmt.Errorf("unsupported block kind: %s", blk.PayloadKind)
+			}
+			err = proto.Unmarshal(blk.PayloadBuffer, obj)
+			if err != nil {
+				return fmt.Errorf("depth 2 proto unmarshal: %s", err)
+			}
+
+			cnt2, err := pbmarsh.MarshalToString(obj)
+			if err != nil {
+				return fmt.Errorf("depth 2 json marshal: %s", err)
+			}
+
+			out, err = sjson.Set(out, "payloadBuffer", json.RawMessage(cnt2))
+			if err != nil {
+				return fmt.Errorf("depth 2 sjson: %s", err)
+			}
+
+			// out, err = sjson.Set(out, "payloadKind", blk.PayloadKind.String())
+			// if err != nil {
+			// 	return fmt.Errorf("depth 2 sjson: %s", err)
+			// }
+
+			// out, err = sjson.Set(out, "timestamp", blk.Timestamp)
+			// if err != nil {
+			// 	return fmt.Errorf("depth 2 sjson: %s", err)
+			// }
+		}
+
+		fmt.Println(out)
+	}
+
 	return nil
 }
 func decode(cmd *cobra.Command, args []string) (err error) {
@@ -162,6 +203,15 @@ func decode(cmd *cobra.Command, args []string) (err error) {
 	return nil
 }
 
-func resolveProtoFile(input string) (file string, err error) {
-	return "", nil
+func inputFile(args []string) (io.ReadCloser, error) {
+	if len(args) > 0 {
+		return os.Open(args[0])
+	}
+
+	input := viper.GetString("global-input")
+	if input == "-" {
+		return os.Stdin, nil
+	}
+
+	return os.Open(input)
 }
