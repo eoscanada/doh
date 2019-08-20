@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"reflect"
 	"strings"
@@ -36,9 +35,10 @@ func main() {
 
 	rootCmd.PersistentFlags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
 	rootCmd.PersistentFlags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
+	rootCmd.PersistentFlags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
-	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+	//
 
 	//decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
 
@@ -87,19 +87,22 @@ func root(cmd *cobra.Command, args []string) (err error) {
 		return
 	}
 
+	var el proto.Message
 	typ := proto.MessageType(matchingType)
-	el := reflect.New(typ).Interface().(proto.Message)
-	err = proto.Unmarshal(buf.Bytes(), el)
-	if err != nil {
-		return fmt.Errorf("decoding: %s", err)
+	el = reflect.New(typ.Elem()).Interface().(proto.Message)
+
+	depth := viper.GetInt("global-depth")
+	pbmarsh := jsonpb.Marshaler{
+		EnumsAsInts:  false,
+		EmitDefaults: true,
+		OrigName:     true,
 	}
 
-	result, err := json.MarshalIndent(el, "", "  ")
+	out, err := decodeInDepth("", pbmarsh, depth, el, buf.Bytes(), "")
 	if err != nil {
-		return fmt.Errorf("json encode: %s", err)
+		return err
 	}
-
-	log.Printf("%#v", result)
+	fmt.Println(out)
 
 	return nil
 }
@@ -127,7 +130,7 @@ func viewDbin(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("unsupported dbin content type: %s", contentType)
 	}
 
-	depth := viper.GetInt("dbin-cmd-depth")
+	depth := viper.GetInt("global-depth")
 	pbmarsh := jsonpb.Marshaler{
 		EnumsAsInts:  false,
 		EmitDefaults: true,
@@ -143,54 +146,9 @@ func viewDbin(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("error reading message: %s", err)
 		}
 
-		blk := &pbbstream.Block{}
-		err = proto.Unmarshal(msg, blk)
+		out, err := decodeInDepth("", pbmarsh, depth, &pbbstream.Block{}, msg, "")
 		if err != nil {
-			return fmt.Errorf("proto unmarshal: %s", err)
-		}
-
-		out, err := pbmarsh.MarshalToString(blk)
-		if err != nil {
-			return fmt.Errorf("json marshal: %s", err)
-		}
-
-		// if required to, show the payload, and replace the `payload_buffer` with the decoded
-		// content
-		if depth > 0 {
-			var obj proto.Message
-			switch blk.PayloadKind {
-			case pbbstream.BlockKind_EOS:
-				obj = &pbdeos.SignedBlock{}
-				obj = &pbdeth.Block{}
-			case pbbstream.BlockKind_ETH:
-				obj = &pbdeth.Block{}
-			default:
-				return fmt.Errorf("unsupported block kind: %s", blk.PayloadKind)
-			}
-			err = proto.Unmarshal(blk.PayloadBuffer, obj)
-			if err != nil {
-				return fmt.Errorf("depth 2 proto unmarshal: %s", err)
-			}
-
-			cnt2, err := pbmarsh.MarshalToString(obj)
-			if err != nil {
-				return fmt.Errorf("depth 2 json marshal: %s", err)
-			}
-
-			out, err = sjson.Set(out, "payloadBuffer", json.RawMessage(cnt2))
-			if err != nil {
-				return fmt.Errorf("depth 2 sjson: %s", err)
-			}
-
-			// out, err = sjson.Set(out, "payloadKind", blk.PayloadKind.String())
-			// if err != nil {
-			// 	return fmt.Errorf("depth 2 sjson: %s", err)
-			// }
-
-			// out, err = sjson.Set(out, "timestamp", blk.Timestamp)
-			// if err != nil {
-			// 	return fmt.Errorf("depth 2 sjson: %s", err)
-			// }
+			return err
 		}
 
 		fmt.Println(out)
@@ -198,6 +156,50 @@ func viewDbin(cmd *cobra.Command, args []string) (err error) {
 
 	return nil
 }
+
+func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj proto.Message, bytes []byte, replaceField string) (out string, err error) {
+	if depth < 0 {
+		return inputJSON, nil
+	}
+
+	err = proto.Unmarshal(bytes, obj)
+	if err != nil {
+		return "", fmt.Errorf("proto unmarshal: %s", err)
+	}
+
+	out, err = marshaler.MarshalToString(obj)
+	if err != nil {
+		return "", fmt.Errorf("json marshal: %s", err)
+	}
+
+	switch el := obj.(type) {
+	case *pbbstream.Block:
+		switch el.PayloadKind {
+		case pbbstream.BlockKind_EOS:
+			// FIXME: &pbdeos.SignedBlock{} when we have reprocessed everything with BlockKind_EOS instead of an int
+			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
+		case pbbstream.BlockKind_ETH:
+			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
+		default:
+			return "", fmt.Errorf("unsupported block kind: %s", el.PayloadKind)
+		}
+		if err != nil {
+			return
+		}
+	case *pbdeos.SignedBlock:
+	case *pbdeth.Block:
+	}
+
+	if inputJSON != "" {
+		out, err = sjson.Set(inputJSON, replaceField, json.RawMessage(out))
+		if err != nil {
+			return out, fmt.Errorf("sjson: %s", err)
+		}
+	}
+
+	return
+}
+
 func decode(cmd *cobra.Command, args []string) (err error) {
 	fmt.Println("DECODE")
 	return nil
