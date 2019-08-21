@@ -215,6 +215,7 @@ func btLs(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return fmt.Errorf("listing tables: %s", err)
 	}
+
 	fmt.Println("Listing tables:")
 	for _, tbl := range tables {
 		fmt.Println("-", tbl)
