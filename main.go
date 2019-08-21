@@ -6,13 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"strings"
 
+	"github.com/abourget/viperbind"
+
 	"cloud.google.com/go/bigtable"
 
-	"github.com/abourget/viperbind"
 	pbbstream "github.com/eoscanada/bstream/pb/dfuse/bstream/v1"
 	"github.com/eoscanada/dbin"
 	"github.com/eoscanada/pbop/jsonpb"
@@ -31,6 +33,25 @@ var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
 var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big table", RunE: btRead, Args: cobra.ExactArgs(1)}
 
+var completionCmd = &cobra.Command{Use: "shell-completion", Short: "Generate shell completions"}
+var completionBashCompletionCmd = &cobra.Command{Use: "bash", Short: "Generate bash completion file output",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := rootCmd.GenBashCompletion(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var completionZshCompletionCmd = &cobra.Command{
+	Use:   "zsh",
+	Short: "Generate zsh completion file output",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := rootCmd.GenZshCompletion(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
 var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 	pbbstream.BlockKind_ETH: map[string]proto.Message{
 		"block_headerProto": &pbdeth.BlockHeader{},
@@ -48,22 +69,22 @@ func main() {
 	rootCmd.AddCommand(btCmd)
 	btCmd.AddCommand(btLsCmd)
 	btCmd.AddCommand(btReadCmd)
+	rootCmd.AddCommand(completionCmd)
+	completionCmd.AddCommand(completionZshCompletionCmd)
+	completionCmd.AddCommand(completionBashCompletionCmd)
 
 	pbCmd.Flags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
 	pbCmd.Flags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
 	pbCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
-
 	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
-
 	btCmd.PersistentFlags().String("db", "test:dev", "bigtable project and instance")
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
 	btReadCmd.Flags().String("kind", "", "block kind value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
-	//
-
 	//decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println("ERROR:", err)
 		os.Exit(1)
