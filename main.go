@@ -206,10 +206,14 @@ func btLs(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	client, _ := newBigTableAdminClient(project, instance)
+	client, err := newBigTableAdminClient(project, instance)
+	if err != nil {
+		return fmt.Errorf("init bigtable admin client: %s", err)
+	}
+
 	tables, err := client.Tables(context.Background())
 	if err != nil {
-		return err
+		return fmt.Errorf("listing tables: %s", err)
 	}
 	fmt.Println("Listing tables:")
 	for _, tbl := range tables {
