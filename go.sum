@@ -81,6 +81,8 @@ github.com/eoscanada/eos-go v0.8.5 h1:6A+hf3pEti8hKqkU/yBlj0Zn7JwOSGFhrcYW5h1rRk
 github.com/eoscanada/eos-go v0.8.5/go.mod h1:RKrm2XzZEZWxSMTRqH5QOyJ1fb/qKEjs2ix1aQl0sk4=
 github.com/eoscanada/logging v0.3.0/go.mod h1:bTyJe9+aI34mriboio0Zl6UpG6kSi/Xx2DV8By7Fpuw=
 github.com/eoscanada/logging v0.3.2/go.mod h1:yRxUx1RFhbYfiyDHIBEqd4W2c7wFogayYgNX4Ee+gfU=
+github.com/eoscanada/pbop v0.0.0-20190821224345-22cd87a4df98 h1:cc+R67+yBgkaTNn/IUqsPjekq9+H4qq+bGNf1jrWJL8=
+github.com/eoscanada/pbop v0.0.0-20190821224345-22cd87a4df98/go.mod h1:n/krOiB1BCiFZfz7fFVyNpsfUiIzUaeu9vM/BfFXzlM=
 github.com/eoscanada/shutter v1.1.3 h1:aAsHsE7cKyoIOcW6E28z+GX9QPoonmzu7lQM4dVMh2o=
 github.com/eoscanada/shutter v1.1.3/go.mod h1:G0WK4xMGv5NiU9yyyLom97nH3nElTgZYY78twJAYAVk=
 github.com/ethereum/go-ethereum v1.9.0/go.mod h1:PwpWDrCLZrV+tfrhqqF6kPknbISMHaJv9Ln3kPCZLwY=

@@ -1,42 +1,42 @@
-pbop - pry open those protobuf files
-------------------------------------
+doh - dfuse operations helpers, the kitchen sink of tools
+---------------------------------------------------------
 
-pbop is aware of our block structures, of dbin packing and can render most of the things to JSON
+doh is aware of our block structures, of dbin packing and can render most of the things to JSON
 with decent unpacking.
 
 Install with:
 
-    go get -u github.com/eoscanada/pbop
+    go get -u github.com/eoscanada/doh
 
 
 Usage:
 
-__pbop bt ls__
+__doh bt ls__
 
 ```shell script
-$ pbop bt ls --db test:dev 
+$ doh bt ls --db test:dev
 Listing tables:
 - eth-test-v1-trxs
 - eth-test-v1-timeline
 - eth-test-v1-blocks
 ```
 
-__pbop bt read__
+__doh bt read__
 ```shell script
-$ pbop bt read eth-test-v1-trxs --db test:dev --type ETH --prefix trx:000170ffbb87f07ae38e505a14e5754a4eee028fe8eac217d34a1c9d112bf89b:00000000007fffc6:360131db -d 0
+$ doh bt read eth-test-v1-trxs --db test:dev --type ETH --prefix trx:000170ffbb87f07ae38e505a14e5754a4eee028fe8eac217d34a1c9d112bf89b:00000000007fffc6:360131db -d 0
 {...}
 
-$ pbop bt read eth-test-v1-trxs --db test:dev --type ETH
+$ doh bt read eth-test-v1-trxs --db test:dev --type ETH
 {...}
 {...}
 {...}
 ```
 
 ```shell script
-$ pbop -t bstream.v1.Block -i ../search/testdata/eth/02-block-with-logs.dat -d 1 | jq . | less
+$ doh -t bstream.v1.Block -i ../search/testdata/eth/02-block-with-logs.dat -d 1 | jq . | less
 {...}
 
-$ pbop dbin -d 0 oneblock.eth.dbin | jq . | less
+$ doh dbin -d 0 oneblock.eth.dbin | jq . | less
 {...}
 {...}
 ```

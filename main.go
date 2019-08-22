@@ -17,16 +17,16 @@ import (
 
 	pbbstream "github.com/eoscanada/bstream/pb/dfuse/bstream/v1"
 	"github.com/eoscanada/dbin"
-	"github.com/eoscanada/pbop/jsonpb"
-	pbdeos "github.com/eoscanada/pbop/pb/dfuse/codecs/deos"
-	pbdeth "github.com/eoscanada/pbop/pb/dfuse/codecs/deth"
+	"github.com/eoscanada/doh/jsonpb"
+	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
+	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tidwall/sjson"
 )
 
-var rootCmd = &cobra.Command{Use: "pbop", Short: "Inspects any file with most auto-detection and auto-discovery"}
+var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery"}
 var pbCmd = &cobra.Command{Use: "pb", Short: "Decode protobufs", RunE: pb}
 var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
@@ -61,7 +61,7 @@ var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 
 func main() {
 	cobra.OnInitialize(func() {
-		viperbind.AutoBind(rootCmd, "PBOP")
+		viperbind.AutoBind(rootCmd, "DOH")
 	})
 
 	rootCmd.AddCommand(dbinCmd)
