@@ -97,7 +97,15 @@ func pb(cmd *cobra.Command, args []string) (err error) {
 	knownTypes := []string{
 		"dfuse.bstream.v1.Block",
 		"dfuse.codecs.deth.Block",
+		"dfuse.codecs.deth.BlockRef",
 		"dfuse.codecs.deth.BlockHeader",
+		"dfuse.codecs.deth.TransactionRefs",
+		"dfuse.codecs.deth.TransactionTrace",
+		"dfuse.codecs.deth.TransactionReceipt",
+		"dfuse.codecs.deth.EventLog",
+		"dfuse.codecs.deth.StorageChange",
+		"dfuse.codecs.deth.BalanceChange",
+		"dfuse.codecs.deth.NonceChange",
 		"dfuse.codecs.deth.EVMCall",
 		"dfuse.codecs.deos.SignedBlock",
 	}
@@ -347,7 +355,7 @@ func inputFile(args []string) (io.ReadCloser, error) {
 		return os.Open(args[0])
 	}
 
-	input := viper.GetString("global-input")
+	input := viper.GetString("pb-cmd-input")
 	if input == "-" {
 		return os.Stdin, nil
 	}
