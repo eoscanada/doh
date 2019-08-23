@@ -5,7 +5,7 @@ go 1.12
 require (
 	cloud.google.com/go v0.43.0
 	github.com/abourget/viperbind v0.1.0
-	github.com/eoscanada/bstream v1.6.3-0.20190819195625-0ef8a3ad6a9b
+	github.com/eoscanada/bstream v1.6.3-0.20190823142602-4e02efefd418
 	github.com/eoscanada/dbin v0.0.3
 	github.com/gogo/protobuf v1.2.0
 	github.com/golang/protobuf v1.3.2

@@ -71,6 +71,7 @@ github.com/emicklei/protobuf2map v0.0.0-20181105121648-9f44bd8300be/go.mod h1:kI
 github.com/eoscanada/bstream v1.6.2 h1:p+gdtsOmE8fwwC7EgOCc73gGFSKAQR/6ggvE2bQI6DY=
 github.com/eoscanada/bstream v1.6.3-0.20190819195625-0ef8a3ad6a9b h1:pVIXjO0oa/1VcSXl7ckyjBX358nPWcbdXspM54YNRGE=
 github.com/eoscanada/bstream v1.6.3-0.20190819195625-0ef8a3ad6a9b/go.mod h1:liQI8ep7LGaDeZrszF0d5Ql0r2g+ZMWBE66Dh9jcHAI=
+github.com/eoscanada/bstream v1.6.3-0.20190823142602-4e02efefd418/go.mod h1:liQI8ep7LGaDeZrszF0d5Ql0r2g+ZMWBE66Dh9jcHAI=
 github.com/eoscanada/dbin v0.0.3 h1:dfL+YePZ+5sk1ws+veZAz5hl9QRlAufVKKj8g/yTN4E=
 github.com/eoscanada/dbin v0.0.3/go.mod h1:ZP6Z/CLYWE09J0Z2/a4t0jPmqkLCGmFpvKFRiM8GMjg=
 github.com/eoscanada/derr v0.3.4/go.mod h1:fbX5M0LGvQheEt/Rcb5k6dB4z+nx8+y32RqwKyzJO70=
