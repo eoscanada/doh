@@ -279,7 +279,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 						return false
 					}
 				} else {
-					formatedRow[key] = item.Value
+					formatedRow[key] = string(item.Value)
 				}
 			}
 		}
