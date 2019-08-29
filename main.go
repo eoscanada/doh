@@ -265,7 +265,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 
 	err = client.Open(args[0]).ReadRows(context.Background(), bigtable.PrefixRange(prefix), func(row bigtable.Row) bool {
 		formatedRow := map[string]interface{}{
-			"key": row.Key(),
+			"_key": row.Key(),
 		}
 		for _, v := range row {
 			for _, item := range v {
