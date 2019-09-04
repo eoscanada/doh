@@ -54,8 +54,9 @@ var completionZshCompletionCmd = &cobra.Command{
 
 var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 	pbbstream.BlockKind_ETH: map[string]proto.Message{
-		"block_headerProto": &pbdeth.BlockHeader{},
-		"trx_proto":         &pbdeth.TransactionTrace{},
+		"block_headerProto":  &pbdeth.BlockHeader{},
+		"block_trxRefsProto": &pbdeth.TransactionRefs{},
+		"trx_proto":          &pbdeth.TransactionTrace{},
 	},
 }
 
