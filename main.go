@@ -11,13 +11,11 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/abourget/viperbind"
-
 	"cloud.google.com/go/bigtable"
-
-	pbbstream "github.com/eoscanada/bstream/pb/dfuse/bstream/v1"
+	"github.com/abourget/viperbind"
 	"github.com/eoscanada/dbin"
 	"github.com/eoscanada/doh/jsonpb"
+	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
 	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
 	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
 	"github.com/golang/protobuf/proto"
@@ -56,6 +54,7 @@ var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 	pbbstream.BlockKind_ETH: map[string]proto.Message{
 		"block_headerProto":  &pbdeth.BlockHeader{},
 		"block_trxRefsProto": &pbdeth.TransactionRefs{},
+		"block_uncles":       &pbdeth.UnclesHeaders{},
 		"trx_proto":          &pbdeth.TransactionTrace{},
 	},
 }
@@ -100,6 +99,7 @@ func pb(cmd *cobra.Command, args []string) (err error) {
 		"dfuse.codecs.deth.Block",
 		"dfuse.codecs.deth.BlockRef",
 		"dfuse.codecs.deth.BlockHeader",
+		"dfuse.codecs.deth.UnclesHeaders",
 		"dfuse.codecs.deth.TransactionRefs",
 		"dfuse.codecs.deth.TransactionTrace",
 		"dfuse.codecs.deth.TransactionReceipt",

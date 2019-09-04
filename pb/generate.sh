@@ -24,5 +24,6 @@ SERVICES=${1:-../../service-definitions}
 # " > $ROOT/files.go
 # popd
 
+protoc -I$SERVICES --go_out=paths=source_relative:. dfuse/bstream/v1/bstream.proto
 protoc -I$SERVICES --go_out=paths=source_relative:. dfuse/codecs/deth/deth.proto
 protoc -I$SERVICES --go_out=paths=source_relative:. dfuse/codecs/deos/deos.proto
