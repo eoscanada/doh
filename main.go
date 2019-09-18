@@ -420,6 +420,11 @@ func deploy(cmd *cobra.Command, args []string) error {
 	tag := args[1]
 	namespace := args[2]
 
+	// To finalize:
+	//  - Support variable number of arguments for `namespace`
+	//  - Support argument to be only `eos` or `eth` (deploy on all `eos` network) (No ondemand by default? Behing a flag?)
+	//  - Support `all` argument? (No ondemand by default? Behing a flag?)
+
 	operatorPath := viper.GetString("deploy-cmd-operator-path")
 	if operatorPath == "" {
 		return errors.New("the dfuse operator path repository must be specified")
@@ -521,6 +526,12 @@ func deploy(cmd *cobra.Command, args []string) error {
 	}
 
 	if isDirtyRepo {
+		fmt.Println("Refreshing last run files, this make take ~1m")
+		err = refreshLastRunFiles(operatorPath)
+		if err != nil {
+			return fmt.Errorf("unable to refresh last run files (via 'k8s/test.sh' script): %s", err)
+		}
+
 		_, err = workTree.Commit(fmt.Sprintf("[doh] updated %s to image id %s for namespace %s", component, tag, namespace), &git.CommitOptions{
 			// By using `All`, our modified files will be automatically added into the commit
 			All: true,
@@ -562,6 +573,16 @@ func deploy(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Successfully deployed.")
 	return nil
+}
+
+func refreshLastRunFiles(operatorPath string) error {
+	k8sFolderPath := path.Join(operatorPath, "k8s")
+	testFilePath := path.Join(k8sFolderPath, "test.sh")
+
+	cmd := exec.Command(testFilePath, testFilePath)
+	cmd.Dir = k8sFolderPath
+
+	return cmd.Run()
 }
 
 func isDirty(workTree *git.Worktree) (bool, error) {
