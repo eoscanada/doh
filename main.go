@@ -479,6 +479,8 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return errors.New("refusing to deploy since operator repository is dirty, please fix that prior deploying")
 	}
 
+	fmt.Println("Updating images file with new container image...")
+
 	namespaceRelativePath := path.Join("k8s", "hooks", fmt.Sprintf("%s.jsonnet", namespace))
 	namespaceFile := path.Join(operatorPath, namespaceRelativePath)
 	_, err = os.Stat(namespaceFile)
@@ -525,13 +527,22 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to determine if operator repository is dirty: %s", err)
 	}
 
+	fmt.Println("Refreshing last run files, this make take ~1m...")
+	err = refreshLastRunFiles(operatorPath)
+	if err != nil {
+		return fmt.Errorf("unable to refresh last run files (via 'k8s/test.sh' script): %s", err)
+	}
+
+	os.Exit(1)
+
 	if isDirtyRepo {
-		fmt.Println("Refreshing last run files, this make take ~1m")
+		fmt.Println("Refreshing last run files, this takes ~1m...")
 		err = refreshLastRunFiles(operatorPath)
 		if err != nil {
 			return fmt.Errorf("unable to refresh last run files (via 'k8s/test.sh' script): %s", err)
 		}
 
+		fmt.Println("Comitting changes...")
 		_, err = workTree.Commit(fmt.Sprintf("[doh] updated %s to image id %s for namespace %s", component, tag, namespace), &git.CommitOptions{
 			// By using `All`, our modified files will be automatically added into the commit
 			All: true,
@@ -546,6 +557,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Println("Pushing changes to remote 'origin'...")
 	err = repo.Push(&git.PushOptions{
 		RemoteName: "origin",
 	})
@@ -559,6 +571,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to retrieve HEAD revision hash: %s", err)
 	}
 
+	fmt.Println("Patching k8s dfuse Cluster resource...")
 	updateK8s := exec.Command("kubectl",
 		"-n", namespace,
 		"patch", "dfuseclusters.dfuse.io", namespace,
@@ -579,7 +592,7 @@ func refreshLastRunFiles(operatorPath string) error {
 	k8sFolderPath := path.Join(operatorPath, "k8s")
 	testFilePath := path.Join(k8sFolderPath, "test.sh")
 
-	cmd := exec.Command(testFilePath, testFilePath)
+	cmd := exec.Command(testFilePath)
 	cmd.Dir = k8sFolderPath
 
 	return cmd.Run()
