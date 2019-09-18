@@ -4,12 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
+	"path"
 	"reflect"
+	"regexp"
 	"strings"
+
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
@@ -22,14 +29,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tidwall/sjson"
+	"gopkg.in/src-d/go-git.v4"
 )
 
-var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery"}
+var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery", SilenceUsage: true}
 var pbCmd = &cobra.Command{Use: "pb", Short: "Decode protobufs", RunE: pb}
 var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
 var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big table", RunE: btRead, Args: cobra.ExactArgs(1)}
+var deployCmd = &cobra.Command{Use: "deploy [component] [tag] [namespace]", Short: "deploy the following `component` using `tag` on given `namespace`", RunE: deploy, Args: cobra.ExactArgs(3)}
 
 var completionCmd = &cobra.Command{Use: "shell-completion", Short: "Generate shell completions"}
 var completionBashCompletionCmd = &cobra.Command{Use: "bash", Short: "Generate bash completion file output",
@@ -67,9 +76,12 @@ func main() {
 	rootCmd.AddCommand(dbinCmd)
 	rootCmd.AddCommand(pbCmd)
 	rootCmd.AddCommand(btCmd)
+	rootCmd.AddCommand(deployCmd)
+	rootCmd.AddCommand(completionCmd)
+
 	btCmd.AddCommand(btLsCmd)
 	btCmd.AddCommand(btReadCmd)
-	rootCmd.AddCommand(completionCmd)
+
 	completionCmd.AddCommand(completionZshCompletionCmd)
 	completionCmd.AddCommand(completionBashCompletionCmd)
 
@@ -84,9 +96,9 @@ func main() {
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
 	//decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
+	deployCmd.Flags().String("operator-path", "", "Absolute path to dfuse-operator repository")
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println("ERROR:", err)
 		os.Exit(1)
 	}
 }
@@ -401,4 +413,162 @@ func decodePayload(marshaler jsonpb.Marshaler, obj proto.Message, bytes []byte) 
 	}
 
 	return json.RawMessage(cnt), nil
+}
+
+func deploy(cmd *cobra.Command, args []string) error {
+	component := args[0]
+	tag := args[1]
+	namespace := args[2]
+
+	operatorPath := viper.GetString("deploy-cmd-operator-path")
+	if operatorPath == "" {
+		return errors.New("the dfuse operator path repository must be specified")
+	}
+
+	info, err := os.Stat(operatorPath)
+	if os.IsNotExist(err) {
+		errorLines := []string{
+			"dfuse-operator repository '%s' path does not exist, we suggest you to globally",
+			"set the environment variable DOH_DEPLOY_CMD_OPERATOR_PATH and making it point",
+			"to your 'dfuse-operator' repository path.",
+		}
+
+		return fmt.Errorf(strings.Join(errorLines, "\n"), operatorPath)
+	}
+
+	if err != nil {
+		return fmt.Errorf("unable to get info about operator path '%s': %s", operatorPath, err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("operator path '%s' is not a directory", operatorPath)
+	}
+
+	fmt.Printf("Deploying '%s:%s' on namespace '%s'...\n", component, tag, namespace)
+
+	repo, err := git.PlainOpen(operatorPath)
+	if err != nil {
+		return fmt.Errorf("unable to open operator repository: %s", err)
+	}
+
+	workTree, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("unable to obtain work tree: %s", err)
+	}
+
+	repoConfig, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve repository config: %s", err)
+	}
+
+	if repoConfig.Remotes["origin"] == nil {
+		return errors.New("only able to deploy if dfuse operator repository has an 'origin' remote, none found")
+	}
+
+	isDirtyRepo, err := isDirty(workTree)
+	if err != nil {
+		return fmt.Errorf("unable to determine if operator repository is dirty: %s", err)
+	}
+
+	if isDirtyRepo {
+		return errors.New("refusing to deploy since operator repository is dirty, please fix that prior deploying")
+	}
+
+	namespaceRelativePath := path.Join("k8s", "hooks", fmt.Sprintf("%s.jsonnet", namespace))
+	namespaceFile := path.Join(operatorPath, namespaceRelativePath)
+	_, err = os.Stat(namespaceFile)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("namespace file '%s' could not be found, unable to deploy on this namespace", namespaceRelativePath)
+	}
+
+	parts := strings.SplitN(namespace, "-", 2)
+	protocol := parts[0]
+
+	imagesRelativePath := path.Join("k8s", "hooks", fmt.Sprintf("images.%s.libsonnet", protocol))
+	imagesFile := path.Join(operatorPath, imagesRelativePath)
+	imagesContent, err := ioutil.ReadFile(imagesFile)
+	if err != nil {
+		return fmt.Errorf("unable to read images file '%s' to update component tag: %s", imagesRelativePath, err)
+	}
+
+	// FIXME: What's the right syntax to re-use arg?
+	componentImageRegex := regexp.MustCompile(fmt.Sprintf("%s: 'gcr.io/eoscanada-shared-services/%s:.+'", component, component))
+	matches := componentImageRegex.Match(imagesContent)
+	if !matches {
+		return fmt.Errorf("unable to find component image line in images file '%s'", imagesRelativePath)
+	}
+
+	// FIXME: What's the right syntax to re-use arg?
+	componentImageLine := fmt.Sprintf("%s: 'gcr.io/eoscanada-shared-services/%s:%s'", component, component, tag)
+	modifiedImagesContent := componentImageRegex.ReplaceAllString(string(imagesContent), componentImageLine)
+
+	err = ioutil.WriteFile(imagesFile, []byte(modifiedImagesContent), os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("unable to write updated component image tag: %s", err)
+	}
+
+	// Let's reset the work tree at this point whatever happens. We discard the error also, too bad
+	// if we were not able to clean up correctly.
+	defer (func() {
+		workTree.Reset(&git.ResetOptions{
+			Mode: git.HardReset,
+		})
+	})()
+
+	isDirtyRepo, err = isDirty(workTree)
+	if err != nil {
+		return fmt.Errorf("unable to determine if operator repository is dirty: %s", err)
+	}
+
+	if isDirtyRepo {
+		_, err = workTree.Commit(fmt.Sprintf("[doh] updated %s to image id %s for namespace %s", component, tag, namespace), &git.CommitOptions{
+			// By using `All`, our modified files will be automatically added into the commit
+			All: true,
+			Author: &object.Signature{
+				Name:  "doh (Automated Deploy)",
+				Email: "doh@dfuse.io",
+			},
+		})
+
+		if err != nil {
+			return fmt.Errorf("unable to commit operator changes: %s", err)
+		}
+	}
+
+	err = repo.Push(&git.PushOptions{
+		RemoteName: "origin",
+	})
+
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("unable to push changes to remote repository: %s", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve HEAD revision hash: %s", err)
+	}
+
+	updateK8s := exec.Command("kubectl",
+		"-n", namespace,
+		"patch", "dfuseclusters.dfuse.io", namespace,
+		"--type=merge",
+		"-p", fmt.Sprintf(`{"spec":{"revision":"%s"}}`, head.Hash().String()),
+	)
+
+	err = updateK8s.Run()
+	if err != nil {
+		return fmt.Errorf("unable to update 'dfuseclusters.dfuse.io' resource %s: %s", namespace, err)
+	}
+
+	fmt.Println("Successfully deployed.")
+	return nil
+}
+
+func isDirty(workTree *git.Worktree) (bool, error) {
+	status, err := workTree.Status()
+	if err != nil {
+		return false, err
+	}
+
+	return !status.IsClean(), nil
 }
