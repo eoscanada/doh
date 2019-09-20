@@ -65,6 +65,7 @@ var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
 		"block_trxRefsProto": &pbdeth.TransactionRefs{},
 		"block_uncles":       &pbdeth.UnclesHeaders{},
 		"trx_proto":          &pbdeth.TransactionTrace{},
+		"trx_blkRefProto":    &pbdeth.BlockRef{},
 	},
 }
 
