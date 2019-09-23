@@ -245,6 +245,9 @@ func btLs(cmd *cobra.Command, args []string) (err error) {
 	return nil
 }
 
+var latestCellOnly = bigtable.LatestNFilter(1)
+var latestCellFilter = bigtable.RowFilter(latestCellOnly)
+
 func btRead(cmd *cobra.Command, args []string) (err error) {
 	project, instance, err := splitDb()
 	if err != nil {
@@ -272,7 +275,9 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 
 	var innerError error
 
-	var opts []bigtable.ReadOption
+	opts := []bigtable.ReadOption{
+		latestCellFilter,
+	}
 	if limit := viper.GetInt("bt-read-cmd-limit"); limit != 0 {
 		opts = append(opts, bigtable.LimitRows(int64(limit)))
 	}
