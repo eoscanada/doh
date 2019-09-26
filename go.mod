@@ -11,6 +11,7 @@ require (
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.3.2
+	github.com/tcnksm/go-gitconfig v0.1.2
 	github.com/tidwall/sjson v1.0.4
 	go.opencensus.io v0.22.1 // indirect
 	golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa // indirect

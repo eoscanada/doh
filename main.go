@@ -15,8 +15,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
-
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
+	"time"
 
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
@@ -28,8 +27,10 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tcnksm/go-gitconfig"
 	"github.com/tidwall/sjson"
 	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery", SilenceUsage: true}
@@ -455,7 +456,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("operator path '%s' is not a directory", operatorPath)
 	}
 
-	fmt.Printf("Deploying '%s:%s' on namespace '%s'...\n", component, tag, namespace)
+	fmt.Printf("Deploying '%s:%s' on namespace '%s' ...\n", component, tag, namespace)
 
 	repo, err := git.PlainOpen(operatorPath)
 	if err != nil {
@@ -470,6 +471,16 @@ func deploy(cmd *cobra.Command, args []string) error {
 	repoConfig, err := repo.Config()
 	if err != nil {
 		return fmt.Errorf("unable to retrieve repository config: %s", err)
+	}
+
+	username, err := gitconfig.Username()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve 'user.name' config option: %s", err)
+	}
+
+	email, err := gitconfig.Email()
+	if err != nil {
+		return fmt.Errorf("unable to retrieve 'user.email' config option: %s", err)
 	}
 
 	if repoConfig.Remotes["origin"] == nil {
@@ -487,7 +498,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Updating images file with new container image...")
 
-	namespaceRelativePath := path.Join("k8s", "hooks", fmt.Sprintf("%s.jsonnet", namespace))
+	namespaceRelativePath := path.Join("hooks", fmt.Sprintf("%s.jsonnet", namespace))
 	namespaceFile := path.Join(operatorPath, namespaceRelativePath)
 	_, err = os.Stat(namespaceFile)
 	if os.IsNotExist(err) {
@@ -497,7 +508,8 @@ func deploy(cmd *cobra.Command, args []string) error {
 	parts := strings.SplitN(namespace, "-", 2)
 	protocol := parts[0]
 
-	imagesRelativePath := path.Join("k8s", "hooks", fmt.Sprintf("images.%s.libsonnet", protocol))
+	// FIXME: Need to handle versionning somehow, hard-coded for testing purposes
+	imagesRelativePath := path.Join("hooks", "components", protocol, "v1", "_images.libsonnet")
 	imagesFile := path.Join(operatorPath, imagesRelativePath)
 	imagesContent, err := ioutil.ReadFile(imagesFile)
 	if err != nil {
@@ -533,28 +545,26 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to determine if operator repository is dirty: %s", err)
 	}
 
-	fmt.Println("Refreshing last run files, this make take ~1m...")
-	err = refreshLastRunFiles(operatorPath)
-	if err != nil {
-		return fmt.Errorf("unable to refresh last run files (via 'k8s/test.sh' script): %s", err)
-	}
-
-	os.Exit(1)
-
 	if isDirtyRepo {
-		fmt.Println("Refreshing last run files, this takes ~1m...")
+		fmt.Println("Refreshing last run files, this takes ~1m ...")
 		err = refreshLastRunFiles(operatorPath)
 		if err != nil {
-			return fmt.Errorf("unable to refresh last run files (via 'k8s/test.sh' script): %s", err)
+			return fmt.Errorf("unable to refresh last run files (via 'test.sh' script): %s", err)
 		}
 
-		fmt.Println("Comitting changes...")
+		fmt.Println("Comitting changes ...")
 		_, err = workTree.Commit(fmt.Sprintf("[doh] updated %s to image id %s for namespace %s", component, tag, namespace), &git.CommitOptions{
 			// By using `All`, our modified files will be automatically added into the commit
 			All: true,
 			Author: &object.Signature{
 				Name:  "doh (Automated Deploy)",
 				Email: "doh@dfuse.io",
+				When:  time.Now(),
+			},
+			Committer: &object.Signature{
+				Name:  username,
+				Email: email,
+				When:  time.Now(),
 			},
 		})
 
@@ -563,7 +573,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("Pushing changes to remote 'origin'...")
+	fmt.Println("Pushing changes to remote 'origin' ...")
 	err = repo.Push(&git.PushOptions{
 		RemoteName: "origin",
 	})
@@ -577,7 +587,7 @@ func deploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unable to retrieve HEAD revision hash: %s", err)
 	}
 
-	fmt.Println("Patching k8s dfuse Cluster resource...")
+	fmt.Println("Patching k8s dfuse Cluster resource ...")
 	updateK8s := exec.Command("kubectl",
 		"-n", namespace,
 		"patch", "dfuseclusters.dfuse.io", namespace,
@@ -595,11 +605,10 @@ func deploy(cmd *cobra.Command, args []string) error {
 }
 
 func refreshLastRunFiles(operatorPath string) error {
-	k8sFolderPath := path.Join(operatorPath, "k8s")
-	testFilePath := path.Join(k8sFolderPath, "test.sh")
+	testFilePath := path.Join(operatorPath, "test.sh")
 
 	cmd := exec.Command(testFilePath)
-	cmd.Dir = k8sFolderPath
+	cmd.Dir = operatorPath
 
 	return cmd.Run()
 }
