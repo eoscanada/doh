@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/eoscanada/doh/jsonpb"
+	"github.com/eoscanada/jsonpb"
 )
 
 func (m *BigInt) MarshalJSONPB(*jsonpb.Marshaler) ([]byte, error) {

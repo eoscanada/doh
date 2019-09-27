@@ -20,7 +20,7 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
 	"github.com/eoscanada/dbin"
-	"github.com/eoscanada/doh/jsonpb"
+	"github.com/eoscanada/jsonpb"
 	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
 	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
 	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
@@ -60,8 +60,8 @@ var completionZshCompletionCmd = &cobra.Command{
 	},
 }
 
-var protoMappings = map[pbbstream.BlockKind]map[string]proto.Message{
-	pbbstream.BlockKind_ETH: map[string]proto.Message{
+var protoMappings = map[pbbstream.Protocol]map[string]proto.Message{
+	pbbstream.Protocol_ETH: map[string]proto.Message{
 		"block_headerProto":  &pbdeth.BlockHeader{},
 		"block_trxRefsProto": &pbdeth.TransactionRefs{},
 		"block_uncles":       &pbdeth.UnclesHeaders{},
@@ -93,7 +93,7 @@ func main() {
 	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	btCmd.PersistentFlags().String("db", "test:dev", "bigtable project and instance")
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
-	btReadCmd.Flags().String("kind", "", "block kind value to assume of the data")
+	btReadCmd.Flags().String("protocol", "", "block protocol value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
@@ -108,37 +108,22 @@ func main() {
 func pb(cmd *cobra.Command, args []string) (err error) {
 	searchType := viper.GetString("pb-cmd-type")
 
-	knownTypes := []string{
-		"dfuse.bstream.v1.Block",
-		"dfuse.codecs.deth.Block",
-		"dfuse.codecs.deth.BlockRef",
-		"dfuse.codecs.deth.BlockHeader",
-		"dfuse.codecs.deth.UnclesHeaders",
-		"dfuse.codecs.deth.TransactionRefs",
-		"dfuse.codecs.deth.TransactionTrace",
-		"dfuse.codecs.deth.TransactionReceipt",
-		"dfuse.codecs.deth.EventLog",
-		"dfuse.codecs.deth.StorageChange",
-		"dfuse.codecs.deth.BalanceChange",
-		"dfuse.codecs.deth.NonceChange",
-		"dfuse.codecs.deth.EVMCall",
-		"dfuse.codecs.deos.SignedBlock",
-	}
 	var matchingType string
-	for _, t := range knownTypes {
+	for _, t := range knownProtobufTypes {
 		if searchType == t {
 			matchingType = t
 			break
 		}
 		if strings.Contains(t, searchType) {
 			if matchingType != "" {
-				return fmt.Errorf("ambiguous type (-t) provided (%q or %q ?), be more specific (known types: %q)", matchingType, t, knownTypes)
+				return fmt.Errorf("ambiguous type (-t) provided (%q or %q ?), be more specific (known types: %q)", matchingType, t, knownProtobufTypes)
 			}
 			matchingType = t
 		}
 	}
+
 	if matchingType == "" {
-		return fmt.Errorf("type (-t) doesn't match known types (%q)", knownTypes)
+		return fmt.Errorf("type (-t) doesn't match known types (%q)", knownProtobufTypes)
 	}
 
 	reader, err := inputFile(args)
@@ -168,6 +153,7 @@ func pb(cmd *cobra.Command, args []string) (err error) {
 	if err != nil {
 		return err
 	}
+
 	fmt.Println(out)
 
 	return nil
@@ -255,11 +241,11 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	flagBlockKind := viper.GetString("bt-read-cmd-kind")
+	flagProtocol := viper.GetString("bt-read-cmd-protocol")
 	depth := viper.GetInt("bt-read-cmd-depth")
-	blockKind := pbbstream.BlockKind(pbbstream.BlockKind_value[flagBlockKind])
-	if blockKind == pbbstream.BlockKind_UNKNOWN {
-		return fmt.Errorf("invalid block --kind value: %q", flagBlockKind)
+	protocol := pbbstream.Protocol(pbbstream.Protocol_value[flagProtocol])
+	if protocol == pbbstream.Protocol_UNKNOWN {
+		return fmt.Errorf("invalid block --protocol value: %q", flagProtocol)
 	}
 
 	prefix := viper.GetString("bt-read-cmd-prefix")
@@ -291,7 +277,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 			for _, item := range v {
 				key := strings.Replace(item.Column, "-", "_", -1)
 				key = strings.Replace(key, ":", "_", -1)
-				protoMessage := getProtoMap(blockKind, key)
+				protoMessage := getProtoMap(protocol, key)
 				if (protoMessage != nil) && (depth != 0) {
 					formatedRow[key], err = decodePayload(pbmarsh, protoMessage, item.Value)
 					if err != nil {
@@ -340,18 +326,18 @@ func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj 
 	switch el := obj.(type) {
 	case *pbbstream.Block:
 		switch el.PayloadKind {
-		case pbbstream.BlockKind_EOS:
-			// FIXME: &pbdeos.SignedBlock{} when we have reprocessed everything with BlockKind_EOS instead of an int
+		case pbbstream.Protocol_EOS:
+			// FIXME: &pbdeos.SignedBlock{} when we have reprocessed everything with Protocol_EOS instead of an int
 			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
-		case pbbstream.BlockKind_ETH:
+		case pbbstream.Protocol_ETH:
 			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
 		default:
-			return "", fmt.Errorf("unsupported block kind: %s", el.PayloadKind)
+			return "", fmt.Errorf("unsupported protocol: %s", el.PayloadKind)
 		}
 		if err != nil {
 			return
 		}
-	case *pbdeos.SignedBlock:
+	case *pbdeos.Block:
 	case *pbdeth.Block:
 	}
 
@@ -396,8 +382,8 @@ func splitDb() (project, instance string, err error) {
 	return parts[0], parts[1], nil
 }
 
-func getProtoMap(blockKindValue pbbstream.BlockKind, key string) proto.Message {
-	maps := protoMappings[blockKindValue]
+func getProtoMap(protocolValue pbbstream.Protocol, key string) proto.Message {
+	maps := protoMappings[protocolValue]
 	if val, ok := maps[key]; ok {
 		typ := reflect.TypeOf(val)
 		return reflect.New(typ.Elem()).Interface().(proto.Message)

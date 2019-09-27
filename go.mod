@@ -7,6 +7,7 @@ require (
 	github.com/abourget/viperbind v0.1.0
 	github.com/eoscanada/bstream v1.6.3-0.20190920160324-f20c499b4b2e // indirect
 	github.com/eoscanada/dbin v0.0.3
+	github.com/eoscanada/jsonpb v0.0.0-20190926194323-1de8191ec406
 	github.com/golang/protobuf v1.3.2
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/spf13/cobra v0.0.5

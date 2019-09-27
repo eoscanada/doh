@@ -71,6 +71,8 @@ github.com/eoscanada/dstore v0.0.1/go.mod h1:TC8bOPajDoMrn40+VOJNRLsV000ETw6BsAK
 github.com/eoscanada/dtracing v0.4.1/go.mod h1:sjhJr/mI8Bh2dPGVEdGsM07tUeqcA6D0eWLEHIT95ak=
 github.com/eoscanada/eos-go v0.8.17-0.20190920145757-caea499055e1 h1:dYFz2L73NPHc5VbIuaWwruOxh+Non29NNXITFqbahAw=
 github.com/eoscanada/eos-go v0.8.17-0.20190920145757-caea499055e1/go.mod h1:RKrm2XzZEZWxSMTRqH5QOyJ1fb/qKEjs2ix1aQl0sk4=
+github.com/eoscanada/jsonpb v0.0.0-20190926194323-1de8191ec406 h1:PJP5g269oNDoNjnBVuJwPk9gbujdY+W0EEMQC7DRyCQ=
+github.com/eoscanada/jsonpb v0.0.0-20190926194323-1de8191ec406/go.mod h1:nPQnthu2ksW1Ax+VaREuiyBgoML2UL1TG/YueXp5i9U=
 github.com/eoscanada/logging v0.3.2/go.mod h1:yRxUx1RFhbYfiyDHIBEqd4W2c7wFogayYgNX4Ee+gfU=
 github.com/eoscanada/shutter v1.1.3 h1:aAsHsE7cKyoIOcW6E28z+GX9QPoonmzu7lQM4dVMh2o=
 github.com/eoscanada/shutter v1.1.3/go.mod h1:G0WK4xMGv5NiU9yyyLom97nH3nElTgZYY78twJAYAVk=
