@@ -20,10 +20,10 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
 	"github.com/eoscanada/dbin"
-	"github.com/eoscanada/jsonpb"
 	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
 	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
 	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
+	"github.com/eoscanada/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -327,8 +327,7 @@ func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj 
 	case *pbbstream.Block:
 		switch el.PayloadKind {
 		case pbbstream.Protocol_EOS:
-			// FIXME: &pbdeos.SignedBlock{} when we have reprocessed everything with Protocol_EOS instead of an int
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
+			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeos.Block{}, el.PayloadBuffer, "payloadBuffer")
 		case pbbstream.Protocol_ETH:
 			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
 		default:
