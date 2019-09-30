@@ -5,6 +5,8 @@ var knownProtobufTypes = []string{
 	"dfuse.bstream.v1.Block",
 
 	// codecs/deos
+	// Generated with:
+	//     cat ../service-definitions/dfuse/codecs/deos/deos.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deos./' | sed 's/ {/",/' | sed -E 's|//.*||' | tr -d ' '
 	"dfuse.codecs.deos.Block",
 	"dfuse.codecs.deos.TransactionRefs",
 	"dfuse.codecs.deos.ActivatedProtocolFeatures",
@@ -16,7 +18,6 @@ var knownProtobufTypes = []string{
 	"dfuse.codecs.deos.TransactionReceipt",
 	"dfuse.codecs.deos.PackedTransaction",
 	"dfuse.codecs.deos.BlockHeader",
-	"dfuse.codecs.deos.BlockHeaderExtension",
 	"dfuse.codecs.deos.ProducerKey",
 	"dfuse.codecs.deos.TransactionLifecycle",
 	"dfuse.codecs.deos.SignedTransaction",
@@ -47,24 +48,24 @@ var knownProtobufTypes = []string{
 	"dfuse.codecs.deos.PermissionLevel",
 	"dfuse.codecs.deos.PermissionLevelWeight",
 	"dfuse.codecs.deos.WaitWeight",
-	"dfuse.codecs.deos.RLimitOp",
-	"dfuse.codecs.deos.RLimitOp_State",
-	"dfuse.codecs.deos.RLimitOp_Config",
-	"dfuse.codecs.deos.RLimitOp_Usage",
+	"dfuse.codecs.deos.RlimitOp",
 	"dfuse.codecs.deos.RlimitState",
-	"dfuse.codecs.deos.UsageAccumulator",
 	"dfuse.codecs.deos.RlimitConfig",
-	"dfuse.codecs.deos.RlimitUsage",
+	"dfuse.codecs.deos.RlimitAccountLimits",
+	"dfuse.codecs.deos.RlimitAccountUsage",
+	"dfuse.codecs.deos.UsageAccumulator",
 	"dfuse.codecs.deos.ElasticLimitParameters",
 	"dfuse.codecs.deos.Ratio",
 	"dfuse.codecs.deos.StackItemContext",
 	"dfuse.codecs.deos.StackItem",
-	"dfuse.codecs.deos.Except",
+	"dfuse.codecs.deos.Exception",
 	"dfuse.codecs.deos.Feature",
 	"dfuse.codecs.deos.SubjectiveRestrictions",
 	"dfuse.codecs.deos.Specification",
 
-	// codecs/deth
+	// codecs/deos
+	// Generated with:
+	//     cat ../service-definitions/dfuse/codecs/deth/deth.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deth./' | sed 's/ {/",/' | sed -E 's|//.*||' | tr -d ' '
 	"dfuse.codecs.deth.Block",
 	"dfuse.codecs.deth.TransactionRefs",
 	"dfuse.codecs.deth.UnclesHeaders",
@@ -77,11 +78,6 @@ var knownProtobufTypes = []string{
 	"dfuse.codecs.deth.TrxLifecycleTransitionConfirmed",
 	"dfuse.codecs.deth.TrxLifecycleTransitionReplaced",
 	"dfuse.codecs.deth.TransactionLifecycleMessage",
-	"dfuse.codecs.deth.TransactionLifecycleMessage_Pooled",
-	"dfuse.codecs.deth.TransactionLifecycleMessage_Mined",
-	"dfuse.codecs.deth.TransactionLifecycleMessage_Forked",
-	"dfuse.codecs.deth.TransactionLifecycleMessage_Confirmed",
-	"dfuse.codecs.deth.TransactionLifecycleMessage_Replaced",
 	"dfuse.codecs.deth.Transaction",
 	"dfuse.codecs.deth.TransactionTrace",
 	"dfuse.codecs.deth.TransactionReceipt",
