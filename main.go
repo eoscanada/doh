@@ -61,6 +61,17 @@ var completionZshCompletionCmd = &cobra.Command{
 }
 
 var protoMappings = map[pbbstream.Protocol]map[string]proto.Message{
+	pbbstream.Protocol_EOS: map[string]proto.Message{
+		"block_proto":         &pbdeos.Block{},
+		"trxs_trxRefsProto":   &pbdeos.TransactionRefs{},
+		"trxs_traceRefsProto": &pbdeos.TransactionRefs{},
+		"trx_proto":           &pbdeos.SignedTransaction{},
+		"trace_proto":         &pbdeos.TransactionTrace{},
+		"dtrx_created-by":     &pbdeos.ExtDTrxOp{},
+		"dtrx_canceled-by":    &pbdeos.ExtDTrxOp{},
+		"meta_blockheader":    &pbdeos.BlockHeader{},
+	},
+
 	pbbstream.Protocol_ETH: map[string]proto.Message{
 		"block_headerProto":  &pbdeth.BlockHeader{},
 		"block_trxRefsProto": &pbdeth.TransactionRefs{},
@@ -91,8 +102,8 @@ func main() {
 	pbCmd.Flags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
 	pbCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
-	btCmd.PersistentFlags().String("db", "test:dev", "bigtable project and instance")
-	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
+	btCmd.PersistentFlags().String("db", "dfuseio-global:dfuse-saas", "bigtable project and instance")
+	btReadCmd.Flags().String("prefix", "p", "bigtable prefix key")
 	btReadCmd.Flags().String("protocol", "", "block protocol value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
@@ -273,6 +284,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		formatedRow := map[string]interface{}{
 			"_key": row.Key(),
 		}
+
 		for _, v := range row {
 			for _, item := range v {
 				key := strings.Replace(item.Column, "-", "_", -1)
@@ -298,9 +310,11 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		fmt.Println(string(cnt))
 		return true
 	}, opts...)
+
 	if err != nil {
 		return err
 	}
+
 	if innerError != nil {
 		return innerError
 	}
@@ -386,14 +400,12 @@ func getProtoMap(protocolValue pbbstream.Protocol, key string) proto.Message {
 	if val, ok := maps[key]; ok {
 		typ := reflect.TypeOf(val)
 		return reflect.New(typ.Elem()).Interface().(proto.Message)
-	} else {
-		return nil
 	}
 
+	return nil
 }
 
 func decodePayload(marshaler jsonpb.Marshaler, obj proto.Message, bytes []byte) (out json.RawMessage, err error) {
-
 	err = proto.Unmarshal(bytes, obj)
 	if err != nil {
 		return nil, fmt.Errorf("proto unmarshal: %s", err)
