@@ -341,9 +341,9 @@ func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj 
 	case *pbbstream.Block:
 		switch el.PayloadKind {
 		case pbbstream.Protocol_EOS:
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeos.Block{}, el.PayloadBuffer, "payloadBuffer")
+			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeos.Block{}, el.PayloadBuffer, "payload_buffer")
 		case pbbstream.Protocol_ETH:
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payloadBuffer")
+			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payload_buffer")
 		default:
 			return "", fmt.Errorf("unsupported protocol: %s", el.PayloadKind)
 		}
