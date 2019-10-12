@@ -103,8 +103,8 @@ func main() {
 	pbCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	btCmd.PersistentFlags().String("db", "dfuseio-global:dfuse-saas", "bigtable project and instance")
-	btReadCmd.Flags().String("prefix", "p", "bigtable prefix key")
-	btReadCmd.Flags().String("protocol", "", "block protocol value to assume of the data")
+	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
+	btReadCmd.Flags().StringP("protocol", "p", "", "block protocol value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
@@ -253,13 +253,11 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	flagProtocol := viper.GetString("bt-read-cmd-protocol")
-	depth := viper.GetInt("bt-read-cmd-depth")
 	protocol := pbbstream.Protocol(pbbstream.Protocol_value[flagProtocol])
 	if protocol == pbbstream.Protocol_UNKNOWN {
 		return fmt.Errorf("invalid block --protocol value: %q", flagProtocol)
 	}
 
-	prefix := viper.GetString("bt-read-cmd-prefix")
 	client, err := newBigTableClient(project, instance)
 	if err != nil {
 		return err
@@ -280,7 +278,17 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		opts = append(opts, bigtable.LimitRows(int64(limit)))
 	}
 
-	err = client.Open(args[0]).ReadRows(context.Background(), bigtable.PrefixRange(prefix), func(row bigtable.Row) bool {
+	prefix := viper.GetString("bt-read-cmd-prefix")
+	depth := viper.GetInt("bt-read-cmd-depth")
+
+	var rowset bigtable.RowSet
+	if prefix != "" {
+		rowset = bigtable.PrefixRange(prefix)
+	} else {
+		rowset = bigtable.InfiniteRange("")
+	}
+
+	err = client.Open(args[0]).ReadRows(context.Background(), rowset, func(row bigtable.Row) bool {
 		formatedRow := map[string]interface{}{
 			"_key": row.Key(),
 		}
