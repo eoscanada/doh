@@ -386,6 +386,8 @@ func splitDb() (project, instance string, err error) {
 	db := viper.GetString("bt-global-db")
 	if db == "prod" {
 		return "dfuseio-global", "dfuse-saas", nil
+	} else if db == "dev" {
+		return "dev", "dev", nil
 	}
 
 	parts := strings.Split(db, ":")

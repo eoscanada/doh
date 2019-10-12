@@ -39,5 +39,5 @@ func newBigTableAdminClient(project, instance string, opts ...option.ClientOptio
 }
 
 func isTestEnv(project, instance string) bool {
-	return (strings.HasPrefix(project, "test") || strings.HasPrefix(instance, "dev"))
+	return (strings.HasPrefix(project, "dev") || strings.HasPrefix(instance, "dev"))
 }
