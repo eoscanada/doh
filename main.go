@@ -19,7 +19,6 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
-	"github.com/eoscanada/dbin"
 	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
 	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
 	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
@@ -28,7 +27,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-gitconfig"
-	"github.com/tidwall/sjson"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
@@ -36,6 +34,7 @@ import (
 var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery", SilenceUsage: true}
 var pbCmd = &cobra.Command{Use: "pb", Short: "Decode protobufs", RunE: pb}
 var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
+var fluxShardCmd = &cobra.Command{Use: "flux [path]", Short: "Display contents of fluxdb shards files", RunE: viewFluxShard, Args: cobra.ExactArgs(1)}
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
 var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big table", RunE: btRead, Args: cobra.ExactArgs(1)}
@@ -88,6 +87,7 @@ func main() {
 
 	rootCmd.AddCommand(dbinCmd)
 	rootCmd.AddCommand(pbCmd)
+	rootCmd.AddCommand(fluxShardCmd)
 	rootCmd.AddCommand(btCmd)
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(completionCmd)
@@ -104,6 +104,9 @@ func main() {
 	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	btCmd.PersistentFlags().String("db", "dfuseio-global:dfuse-saas", "bigtable project and instance")
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
+	btReadCmd.Flags().String("ts-start", "", "Filter rows on timestamp, in number of milliseconds since EPOCH")
+	btReadCmd.Flags().String("ts-end", "", "Filter rows on timestamp, in number of milliseconds since EPOCH")
+	btReadCmd.Flags().Bool("all-cells", false, "List all cell values, instead of limiting to one timetsamp per cell, which is the default.")
 	btReadCmd.Flags().StringP("protocol", "p", "", "block protocol value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
@@ -170,57 +173,6 @@ func pb(cmd *cobra.Command, args []string) (err error) {
 	return nil
 }
 
-func viewDbin(cmd *cobra.Command, args []string) (err error) {
-	// Open the dbin file
-	// Check its type
-	// Load the contents with the right value
-
-	reader, err := inputFile(args)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-
-	binReader := dbin.NewReader(reader)
-
-	contentType, version, err := binReader.ReadHeader()
-	if version != 1 {
-		return fmt.Errorf("unsupported dbin version %d", version)
-	}
-
-	switch contentType {
-	case "EOS", "ETH":
-	default:
-		return fmt.Errorf("unsupported dbin content type: %s", contentType)
-	}
-
-	depth := viper.GetInt("dbin-cmd-depth")
-	pbmarsh := jsonpb.Marshaler{
-		EnumsAsInts:  false,
-		EmitDefaults: true,
-		OrigName:     true,
-	}
-
-	for {
-		msg, err := binReader.ReadMessage()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error reading message: %s", err)
-		}
-
-		out, err := decodeInDepth("", pbmarsh, depth, &pbbstream.Block{}, msg, "")
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(out)
-	}
-
-	return nil
-}
-
 func btLs(cmd *cobra.Command, args []string) (err error) {
 	project, instance, err := splitDb()
 	if err != nil {
@@ -271,9 +223,26 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 
 	var innerError error
 
-	opts := []bigtable.ReadOption{
-		latestCellFilter,
+	opts := []bigtable.ReadOption{}
+
+	if !viper.GetBool("bt-read-cmd-all-cells") {
+		opts = append(opts, latestCellFilter)
 	}
+
+	tsStart := viper.GetString("bt-read-cmd-ts-start")
+	tsEnd := viper.GetString("bt-read-cmd-ts-end")
+	if tsStart != "" || tsEnd != "" {
+		start, err := msToBTTimestamp(tsStart)
+		if err != nil {
+			return err
+		}
+		end, err := msToBTTimestamp(tsEnd)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, bigtable.RowFilter(bigtable.TimestampRangeFilterMicros(start, end)))
+	}
+
 	if limit := viper.GetInt("bt-read-cmd-limit"); limit != 0 {
 		opts = append(opts, bigtable.LimitRows(int64(limit)))
 	}
@@ -296,6 +265,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		for _, v := range row {
 			for _, item := range v {
 				key := strings.Replace(item.Column, "-", "_", -1)
+				formatedRow["_ts"] = item.Timestamp.Time().UTC().Format(time.RFC3339Nano)
 				key = strings.Replace(key, ":", "_", -1)
 				protoMessage := getProtoMap(protocol, key)
 				if (protoMessage != nil) && (depth != 0) {
@@ -328,48 +298,6 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	return nil
-}
-
-func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj proto.Message, bytes []byte, replaceField string) (out string, err error) {
-	if depth < 0 {
-		return inputJSON, nil
-	}
-
-	err = proto.Unmarshal(bytes, obj)
-	if err != nil {
-		return "", fmt.Errorf("proto unmarshal: %s", err)
-	}
-
-	out, err = marshaler.MarshalToString(obj)
-	if err != nil {
-		return "", fmt.Errorf("json marshal: %s", err)
-	}
-
-	switch el := obj.(type) {
-	case *pbbstream.Block:
-		switch el.PayloadKind {
-		case pbbstream.Protocol_EOS:
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeos.Block{}, el.PayloadBuffer, "payload_buffer")
-		case pbbstream.Protocol_ETH:
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payload_buffer")
-		default:
-			return "", fmt.Errorf("unsupported protocol: %s", el.PayloadKind)
-		}
-		if err != nil {
-			return
-		}
-	case *pbdeos.Block:
-	case *pbdeth.Block:
-	}
-
-	if inputJSON != "" {
-		out, err = sjson.Set(inputJSON, replaceField, json.RawMessage(out))
-		if err != nil {
-			return out, fmt.Errorf("sjson: %s", err)
-		}
-	}
-
-	return
 }
 
 func decode(cmd *cobra.Command, args []string) (err error) {
