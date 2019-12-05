@@ -6,7 +6,7 @@ var knownProtobufTypes = []string{
 
 	// codecs/deos
 	// Generated with:
-	//     cat ../service-definitions/dfuse/codecs/deos/deos.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deos./' | sed 's/ {/",/' | sed -E 's|//.*||' | tr -d ' '
+	//     cat ../service-definitions/dfuse/codecs/deos/deos.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deos./' | sed 's/ {.*/",/' | sed -E 's|//.*||' | tr -d ' '
 	"dfuse.codecs.deos.Block",
 	"dfuse.codecs.deos.TransactionRefs",
 	"dfuse.codecs.deos.ActivatedProtocolFeatures",
@@ -65,19 +65,14 @@ var knownProtobufTypes = []string{
 
 	// codecs/deos
 	// Generated with:
-	//     cat ../service-definitions/dfuse/codecs/deth/deth.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deth./' | sed 's/ {/",/' | sed -E 's|//.*||' | tr -d ' '
+	//     cat ../service-definitions/dfuse/codecs/deth/deth.proto | grep -E "^message" | sed 's/message /"dfuse.codecs.deth./' | sed 's/ {.*/",/' | sed -E 's|//.*||' | tr -d ' '
 	"dfuse.codecs.deth.Block",
 	"dfuse.codecs.deth.TransactionRefs",
 	"dfuse.codecs.deth.UnclesHeaders",
 	"dfuse.codecs.deth.BlockRef",
 	"dfuse.codecs.deth.BlockHeader",
 	"dfuse.codecs.deth.BigInt",
-	"dfuse.codecs.deth.TrxLifecycleTransitionPooled",
-	"dfuse.codecs.deth.TrxLifecycleTransitionMined",
-	"dfuse.codecs.deth.TrxLifecycleTransitionForked",
-	"dfuse.codecs.deth.TrxLifecycleTransitionConfirmed",
-	"dfuse.codecs.deth.TrxLifecycleTransitionReplaced",
-	"dfuse.codecs.deth.TransactionLifecycleMessage",
+	"dfuse.codecs.deth.TransactionState",
 	"dfuse.codecs.deth.Transaction",
 	"dfuse.codecs.deth.TransactionTrace",
 	"dfuse.codecs.deth.TransactionReceipt",
@@ -86,4 +81,7 @@ var knownProtobufTypes = []string{
 	"dfuse.codecs.deth.StorageChange",
 	"dfuse.codecs.deth.BalanceChange",
 	"dfuse.codecs.deth.NonceChange",
+	"dfuse.codecs.deth.CodeChange",
+	"dfuse.codecs.deth.GasChange",
+	"dfuse.codecs.deth.GasEvent",
 }
