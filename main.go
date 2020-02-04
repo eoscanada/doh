@@ -19,11 +19,13 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
+	"github.com/dustin/go-humanize"
 	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
 	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
 	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
 	"github.com/eoscanada/jsonpb"
 	"github.com/golang/protobuf/proto"
+	zstd2 "github.com/klauspost/compress/zstd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-gitconfig"
@@ -38,6 +40,7 @@ var fluxShardCmd = &cobra.Command{Use: "flux [path]", Short: "Display contents o
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
 var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big table", RunE: btRead, Args: cobra.ExactArgs(1)}
+var btTestCompressionCmd = &cobra.Command{Use: "test-compression [table]", Short: "test compression", RunE: btTestCompression, Args: cobra.ExactArgs(1)}
 var deployCmd = &cobra.Command{Use: "deploy [component] [tag] [namespace]", Short: "deploy the following `component` using `tag` on given `namespace`", RunE: deploy, Args: cobra.ExactArgs(3)}
 
 var completionCmd = &cobra.Command{Use: "shell-completion", Short: "Generate shell completions"}
@@ -94,6 +97,7 @@ func main() {
 
 	btCmd.AddCommand(btLsCmd)
 	btCmd.AddCommand(btReadCmd)
+	btCmd.AddCommand(btTestCompressionCmd)
 
 	completionCmd.AddCommand(completionZshCompletionCmd)
 	completionCmd.AddCommand(completionBashCompletionCmd)
@@ -110,6 +114,10 @@ func main() {
 	btReadCmd.Flags().StringP("protocol", "p", "", "block protocol value to assume of the data")
 	btReadCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
 	btReadCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+
+	btTestCompressionCmd.Flags().String("prefix", "", "bigtable prefix key")
+	btTestCompressionCmd.Flags().IntP("limit", "l", 100, "limit the number of rows returned")
+
 	//dbinCmd.Flags().BoolP("list", "l", false, "Return as list instead of as JSONL")
 	//decodeCmd.Flags().Bool("enable-upload", false, "Upload merged indexes to the --indexes-store")
 	deployCmd.Flags().String("operator-path", "", "Absolute path to dfuse-operator repository")
@@ -198,6 +206,143 @@ func btLs(cmd *cobra.Command, args []string) (err error) {
 var latestCellOnly = bigtable.LatestNFilter(1)
 var latestCellFilter = bigtable.RowFilter(latestCellOnly)
 
+func btTestCompression(cmd *cobra.Command, args []string) (err error) {
+	project, instance, err := splitDb()
+	if err != nil {
+		return err
+	}
+
+	protocol := pbbstream.Protocol_EOS
+
+	client, err := newBigTableClient(project, instance)
+	if err != nil {
+		return err
+	}
+
+	var innerError error
+
+	opts := []bigtable.ReadOption{}
+	opts = append(opts, latestCellFilter)
+
+	tsStart := viper.GetString("bt-read-cmd-ts-start")
+	tsEnd := viper.GetString("bt-read-cmd-ts-end")
+	if tsStart != "" || tsEnd != "" {
+		start, err := msToBTTimestamp(tsStart)
+		if err != nil {
+			return err
+		}
+		end, err := msToBTTimestamp(tsEnd)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, bigtable.RowFilter(bigtable.TimestampRangeFilterMicros(start, end)))
+	}
+
+	limit := viper.GetInt("bt-test-compression-cmd-limit")
+	if limit != 0 {
+		opts = append(opts, bigtable.LimitRows(int64(limit)))
+	}
+
+	prefix := viper.GetString("bt-test-compression-cmd-prefix")
+
+	var rowset bigtable.RowSet
+	if prefix != "" {
+		rowset = bigtable.PrefixRange(prefix)
+	} else {
+		rowset = bigtable.InfiniteRange("")
+	}
+
+	var rowCount, valCount, itemCount int
+	var uncompressedBytes int
+	var compressedBytes int
+	var compressionTime time.Duration
+	var decompressionTime time.Duration
+	var unmarshalingTime time.Duration
+
+	dec, _ := zstd2.NewReader(nil)
+	enc, _ := zstd2.NewWriter(nil)
+
+	t0 := time.Now()
+	err = client.Open(args[0]).ReadRows(context.Background(), rowset, func(row bigtable.Row) bool {
+		rowCount++
+		for _, v := range row {
+			itemCount++
+			for _, item := range v {
+				valCount++
+				// TODO: compress, decompress the item.Value
+				// inc compressionTime, decompressionTime
+				uncompressedBytes += len(item.Value)
+
+				t2 := time.Now()
+				out := enc.EncodeAll(item.Value, nil)
+				compressionTime += time.Since(t2)
+
+				compressedBytes += len(out)
+
+				t3 := time.Now()
+				uncompressedAgain, err := dec.DecodeAll(out, nil)
+				decompressionTime += time.Since(t3)
+
+				if err != nil {
+					panic("failed decoding whatever")
+				}
+				if len(uncompressedAgain) != len(item.Value) {
+					panic("compression/decompression didn't yield same number of bytes")
+				}
+
+				key := strings.Replace(item.Column, "-", "_", -1)
+				key = strings.Replace(key, ":", "_", -1)
+				protoMessage := getProtoMap(protocol, key)
+				if protoMessage != nil {
+					t1 := time.Now()
+					if err := proto.Unmarshal(item.Value, protoMessage); err != nil {
+						innerError = fmt.Errorf("proto unmarshal: %s", err)
+						return false
+					}
+					unmarshalingTime += time.Since(t1)
+				}
+
+				// on error, set innerError, return `false`
+			}
+		}
+
+		return true
+	}, opts...)
+	if err != nil {
+		return err
+	}
+	if innerError != nil {
+		return innerError
+	}
+
+	totalDuration := time.Since(t0)
+
+	netApprox := totalDuration - compressionTime - decompressionTime - unmarshalingTime
+	fmt.Printf("Processed %s rows prefixed %q from table %q, compressing, decompressing, and unmarshaling into protobuf structs\n", humanize.Comma(int64(limit)), prefix, args[0])
+	fmt.Println("")
+	fmt.Println("Total time:", totalDuration)
+	fmt.Println("Compression time:", compressionTime)
+	fmt.Println("Decompression time:", decompressionTime)
+	fmt.Println("Unmarshaling time:", unmarshalingTime)
+	fmt.Println("Network time approximation:", netApprox)
+	fmt.Println("")
+
+	fmt.Printf("Compression time vs network approx ratio: %.2f%%\n", float64(compressionTime)/float64(netApprox)*100.0)
+	fmt.Printf("Decompression time vs network approx ratio: %.2f%%\n", float64(decompressionTime)/float64(netApprox)*100.0)
+	fmt.Printf("Decompression vs unmarshal ratio: %.2f%%\n", float64(decompressionTime)/float64(unmarshalingTime)*100.0)
+
+	fmt.Println("")
+
+	fmt.Printf("Counts:\n   Rows: %s\n   Items: %s\n   Values: %s\n", humanize.Comma(int64(rowCount)), humanize.Comma(int64(itemCount)), humanize.Comma(int64(valCount)))
+	fmt.Println("")
+
+	fmt.Println("Uncompressed bytes:", humanize.Bytes(uint64(uncompressedBytes)))
+	fmt.Println("Compressed bytes:", humanize.Bytes(uint64(compressedBytes)))
+	fmt.Printf("Compression ratio: %.2f%%\n", float64(compressedBytes)/float64(uncompressedBytes)*100.0)
+
+	return nil
+}
+
 func btRead(cmd *cobra.Command, args []string) (err error) {
 	project, instance, err := splitDb()
 	if err != nil {
@@ -268,6 +413,7 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 				formatedRow["_ts"] = item.Timestamp.Time().UTC().Format(time.RFC3339Nano)
 				key = strings.Replace(key, ":", "_", -1)
 				protoMessage := getProtoMap(protocol, key)
+
 				if (protoMessage != nil) && (depth != 0) {
 					formatedRow[key], err = decodePayload(pbmarsh, protoMessage, item.Value)
 					if err != nil {
