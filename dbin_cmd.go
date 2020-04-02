@@ -16,6 +16,14 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
+
+func init() {
+	rootCmd.AddCommand(dbinCmd)
+
+	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
+}
+
 func viewDbin(cmd *cobra.Command, args []string) (err error) {
 	// Open the dbin file
 	// Check its type

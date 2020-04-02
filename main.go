@@ -35,8 +35,8 @@ import (
 
 var rootCmd = &cobra.Command{Use: "doh", Short: "Inspects any file with most auto-detection and auto-discovery", SilenceUsage: true}
 var pbCmd = &cobra.Command{Use: "pb", Short: "Decode protobufs", RunE: pb}
-var dbinCmd = &cobra.Command{Use: "dbin", Short: "Do all sorts of type checks to determine what the file is", RunE: viewDbin}
 var fluxShardCmd = &cobra.Command{Use: "flux [path]", Short: "Display contents of fluxdb shards files", RunE: viewFluxShard, Args: cobra.ExactArgs(1)}
+
 var btCmd = &cobra.Command{Use: "bt", Short: "big table related things"}
 var btLsCmd = &cobra.Command{Use: "ls", Short: "list tables form big table", RunE: btLs}
 var btReadCmd = &cobra.Command{Use: "read [table]", Short: "read rows from big table", RunE: btRead, Args: cobra.ExactArgs(1)}
@@ -88,7 +88,7 @@ func main() {
 		viperbind.AutoBind(rootCmd, "DOH")
 	})
 
-	rootCmd.AddCommand(dbinCmd)
+
 	rootCmd.AddCommand(pbCmd)
 	rootCmd.AddCommand(fluxShardCmd)
 	rootCmd.AddCommand(btCmd)
@@ -105,8 +105,8 @@ func main() {
 	pbCmd.Flags().StringP("type", "t", "", "A (partial) type. Will crawl the .proto files in -I and do fnmatch")
 	pbCmd.Flags().StringP("input", "i", "-", "Input file. '-' for stdin (default)")
 	pbCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
-	dbinCmd.Flags().IntP("depth", "d", 1, "Depth of decoding. 0 = top-level block, 1 = kind-specific blocks, 2 = future!")
 	btCmd.PersistentFlags().String("db", "dfuseio-global:dfuse-saas", "bigtable project and instance")
+
 	btReadCmd.Flags().String("prefix", "", "bigtable prefix key")
 	btReadCmd.Flags().String("ts-start", "", "Filter rows on timestamp, in number of milliseconds since EPOCH")
 	btReadCmd.Flags().String("ts-end", "", "Filter rows on timestamp, in number of milliseconds since EPOCH")
@@ -260,7 +260,7 @@ func btTestCompression(cmd *cobra.Command, args []string) (err error) {
 	var unmarshalingTime time.Duration
 
 	dec, _ := zstd2.NewReader(nil)
-	enc, _ := zstd2.NewWriter(nil)
+	enc, _ := zstd2.NewWriter(nil) // , zstd2.WithEncoderLevel(zstd2.SpeedFastest))
 
 	t0 := time.Now()
 	err = client.Open(args[0]).ReadRows(context.Background(), rowset, func(row bigtable.Row) bool {
@@ -273,15 +273,21 @@ func btTestCompression(cmd *cobra.Command, args []string) (err error) {
 				// inc compressionTime, decompressionTime
 				uncompressedBytes += len(item.Value)
 
-				t2 := time.Now()
-				out := enc.EncodeAll(item.Value, nil)
-				compressionTime += time.Since(t2)
+				var uncompressedAgain []byte
+				if len(item.Value) > 128 {
+					t2 := time.Now()
+					out := enc.EncodeAll(item.Value, nil)
+					compressionTime += time.Since(t2)
 
-				compressedBytes += len(out)
+					compressedBytes += len(out)
 
-				t3 := time.Now()
-				uncompressedAgain, err := dec.DecodeAll(out, nil)
-				decompressionTime += time.Since(t3)
+					t3 := time.Now()
+					uncompressedAgain, err = dec.DecodeAll(out, nil)
+					decompressionTime += time.Since(t3)
+				} else {
+					compressedBytes += len(item.Value)
+					uncompressedAgain = item.Value
+				}
 
 				if err != nil {
 					panic("failed decoding whatever")
@@ -333,7 +339,7 @@ func btTestCompression(cmd *cobra.Command, args []string) (err error) {
 
 	fmt.Println("")
 
-	fmt.Printf("Counts:\n   Rows: %s\n   Items: %s\n   Values: %s\n", humanize.Comma(int64(rowCount)), humanize.Comma(int64(itemCount)), humanize.Comma(int64(valCount)))
+	fmt.Printf("Counts:\n   Rows: %s\n   Items: %s\n   Values: %s  (avg size: %s)\n", humanize.Comma(int64(rowCount)), humanize.Comma(int64(itemCount)), humanize.Comma(int64(valCount)), humanize.Comma(int64(uncompressedBytes/valCount)))
 	fmt.Println("")
 
 	fmt.Println("Uncompressed bytes:", humanize.Bytes(uint64(uncompressedBytes)))
@@ -443,11 +449,6 @@ func btRead(cmd *cobra.Command, args []string) (err error) {
 		return innerError
 	}
 
-	return nil
-}
-
-func decode(cmd *cobra.Command, args []string) (err error) {
-	fmt.Println("DECODE")
 	return nil
 }
 
