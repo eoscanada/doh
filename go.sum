@@ -180,6 +180,8 @@ github.com/eoscanada/jsonpb v0.0.0-20190926194323-1de8191ec406/go.mod h1:nPQnthu
 github.com/eoscanada/jsonpb v0.0.0-20191003191457-98439e8ce04b h1:0a/Y9Ul/KqYMLlkVKeoyWBl+U7wlD2C5UN1xIB3KGgI=
 github.com/eoscanada/jsonpb v0.0.0-20191003191457-98439e8ce04b/go.mod h1:ygJ/th2MCCM5CWaZoqskvCcr6ISJDILKZUq9XfpnxYk=
 github.com/eoscanada/kvdb v0.0.11 h1:yDLRJtb45lx/FKcYWdgEV33D/tfYBEbYiZO1oKeXS7c=
+github.com/eoscanada/kvdb v0.0.12-0.20200402165303-45477dfbb477 h1:jrTT8fm3ZaHuTJ9UsiP2ZxzI+qePoWVw7IHYKFx9hBA=
+github.com/eoscanada/kvdb v0.0.12-0.20200402165303-45477dfbb477/go.mod h1:2COxcYgh6166yBB4Ss4RmoyAii+ngstItuj2seyumE8=
 github.com/eoscanada/logging v0.3.2/go.mod h1:yRxUx1RFhbYfiyDHIBEqd4W2c7wFogayYgNX4Ee+gfU=
 github.com/eoscanada/logging v0.6.3/go.mod h1:3D3AG6ldbuHTokjEPOFw3n/yXYvEEGwjMefJyhwSv1o=
 github.com/eoscanada/logging v0.6.5/go.mod h1:igsJcmFqmGMs3lP988h5A82T4xKVz5zpJkh8Wt/7rYE=

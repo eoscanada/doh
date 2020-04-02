@@ -12,7 +12,7 @@ require (
 	github.com/eoscanada/dbin v0.0.3
 	github.com/eoscanada/dstore v0.1.5
 	github.com/eoscanada/jsonpb v0.0.0-20191003191457-98439e8ce04b
-	github.com/eoscanada/kvdb v0.0.12-0.20200402161342-124fe3102056
+	github.com/eoscanada/kvdb v0.0.12-0.20200402165303-45477dfbb477
 	github.com/golang/protobuf v1.3.4
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/klauspost/compress v1.8.5
@@ -23,5 +23,3 @@ require (
 	google.golang.org/api v0.15.0
 	gopkg.in/src-d/go-git.v4 v4.13.1
 )
-
-replace github.com/eoscanada/kvdb => /home/abourget/dfuse/kvdb
