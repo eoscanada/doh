@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/eoscanada/dbin" // internal model, until we switch it all to Protobuf
-	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
-	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
-	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
-	"github.com/eoscanada/jsonpb"
+	"github.com/dfuse-io/dbin" // internal model, until we switch it all to Protobuf
+	pbbstream "github.com/dfuse-io/doh/pb/dfuse/bstream/v1"
+	pbdeos "github.com/dfuse-io/doh/pb/dfuse/codecs/deos"
+	"github.com/dfuse-io/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -96,7 +95,7 @@ func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj 
 		case pbbstream.Protocol_EOS:
 			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeos.Block{}, el.PayloadBuffer, "payload_buffer")
 		case pbbstream.Protocol_ETH:
-			out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payload_buffer")
+			// out, err = decodeInDepth(out, marshaler, depth-1, &pbdeth.Block{}, el.PayloadBuffer, "payload_buffer")
 		default:
 			return "", fmt.Errorf("unsupported protocol: %s", el.PayloadKind)
 		}
@@ -104,7 +103,7 @@ func decodeInDepth(inputJSON string, marshaler jsonpb.Marshaler, depth int, obj 
 			return
 		}
 	case *pbdeos.Block:
-	case *pbdeth.Block:
+		// case *pbdeth.Block:
 	}
 
 	if inputJSON != "" {

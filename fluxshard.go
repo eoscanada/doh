@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/eoscanada/doh/fluxdb"
-	"github.com/eoscanada/dstore"
+	"github.com/dfuse-io/doh/fluxdb"
+	"github.com/dfuse-io/dstore"
 	"github.com/spf13/cobra"
 )
 

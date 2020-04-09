@@ -19,11 +19,10 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"github.com/abourget/viperbind"
+	pbbstream "github.com/dfuse-io/doh/pb/dfuse/bstream/v1"
+	pbdeos "github.com/dfuse-io/doh/pb/dfuse/codecs/deos"
+	"github.com/dfuse-io/jsonpb"
 	"github.com/dustin/go-humanize"
-	pbbstream "github.com/eoscanada/doh/pb/dfuse/bstream/v1"
-	pbdeos "github.com/eoscanada/doh/pb/dfuse/codecs/deos"
-	pbdeth "github.com/eoscanada/doh/pb/dfuse/codecs/deth"
-	"github.com/eoscanada/jsonpb"
 	"github.com/golang/protobuf/proto"
 	zstd2 "github.com/klauspost/compress/zstd"
 	"github.com/spf13/cobra"
@@ -74,20 +73,19 @@ var protoMappings = map[pbbstream.Protocol]map[string]proto.Message{
 		"meta_blockheader":    &pbdeos.BlockHeader{},
 	},
 
-	pbbstream.Protocol_ETH: map[string]proto.Message{
-		"block_headerProto":  &pbdeth.BlockHeader{},
-		"block_trxRefsProto": &pbdeth.TransactionRefs{},
-		"block_uncles":       &pbdeth.UnclesHeaders{},
-		"trx_proto":          &pbdeth.TransactionTrace{},
-		"trx_blkRefProto":    &pbdeth.BlockRef{},
-	},
+	// pbbstream.Protocol_ETH: map[string]proto.Message{
+	// 	"block_headerProto":  &pbdeth.BlockHeader{},
+	// 	"block_trxRefsProto": &pbdeth.TransactionRefs{},
+	// 	"block_uncles":       &pbdeth.UnclesHeaders{},
+	// 	"trx_proto":          &pbdeth.TransactionTrace{},
+	// 	"trx_blkRefProto":    &pbdeth.BlockRef{},
+	// },
 }
 
 func main() {
 	cobra.OnInitialize(func() {
 		viperbind.AutoBind(rootCmd, "DOH")
 	})
-
 
 	rootCmd.AddCommand(pbCmd)
 	rootCmd.AddCommand(fluxShardCmd)

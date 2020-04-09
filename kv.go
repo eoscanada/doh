@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/eoscanada/kvdb"
-	"github.com/eoscanada/kvdb/store"
-	_ "github.com/eoscanada/kvdb/store/badger"
+	"github.com/dfuse-io/kvdb"
+	"github.com/dfuse-io/kvdb/store"
+	_ "github.com/dfuse-io/kvdb/store/badger"
+	_ "github.com/dfuse-io/kvdb/store/tikv"
+	_ "github.com/dfuse-io/kvdb/store/bigkv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

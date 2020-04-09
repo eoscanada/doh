@@ -6,7 +6,7 @@ with decent unpacking.
 
 Install with:
 
-    go get -u github.com/eoscanada/doh
+    go get -u github.com/dfuse-io/doh
 
 
 Usage:
